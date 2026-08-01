@@ -42,6 +42,7 @@ const getUserById = async (req, res) => {
                 name: true,
                 email: true,
                 phone: true,
+                role: true,
                 createdAt: true,
                 fields: true
             }

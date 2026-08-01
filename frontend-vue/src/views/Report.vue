@@ -4,12 +4,14 @@ import api from '../api';
 import { toast } from 'vue3-toastify';
 
 const reports = ref([]);
+const reportType = ref('');
 const isLoading = ref(true);
 
 const fetchReports = async () => {
   try {
     const res = await api.get('/report');
     reports.value = res.data.data;
+    reportType.value = res.data.type;
   } catch (err) {
     toast.error('Gagal memuat data laporan');
   } finally {
@@ -23,31 +25,38 @@ const exportCSV = () => {
     return;
   }
 
-  // Header CSV
-  const headers = ['Nama Petani', 'Email', 'Jumlah Sawah', 'Frekuensi Irigasi Selesai', 'Total Estimasi Panen (Kg)'];
-  
-  // Rows
-  const rows = reports.value.map(r => [
-    r.name,
-    r.email,
-    r.totalFields,
-    r.totalWaterings,
-    r.totalYieldKg
-  ]);
+  let headers = [];
+  let rows = [];
 
-  // Gabungkan
+  if (reportType.value === 'PETANI_REPORT') {
+    headers = ['Komoditas', 'Total Luas Tanam (Ha)', 'Total Estimasi Panen (Kg)'];
+    rows = reports.value.map(r => [
+      r.cropName,
+      r.totalArea.toFixed(2),
+      r.totalYieldKg
+    ]);
+  } else {
+    headers = ['Nama Petani', 'Email', 'Jumlah Sawah', 'Frekuensi Irigasi Selesai', 'Total Estimasi Panen (Kg)'];
+    rows = reports.value.map(r => [
+      r.name,
+      r.email,
+      r.totalFields,
+      r.totalWaterings,
+      r.totalYieldKg
+    ]);
+  }
+
   const csvContent = [
     headers.join(','),
     ...rows.map(row => row.join(','))
   ].join('\n');
 
-  // Buat file dan trigger download
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `Laporan_Petani_${new Date().toISOString().split('T')[0]}.csv`);
+  link.setAttribute('download', `Laporan_Aktivitas_${new Date().toISOString().split('T')[0]}.csv`);
   link.style.visibility = 'hidden';
   
   document.body.appendChild(link);
@@ -67,7 +76,8 @@ onMounted(() => {
     <div class="page-header">
       <div>
         <h2>Laporan Aktivitas Petani</h2>
-        <p class="text-muted">Rekapitulasi kepemilikan sawah, riwayat irigasi, dan panen.</p>
+        <p v-if="reportType === 'ADMIN_REPORT'" class="text-muted">Rekapitulasi kepemilikan sawah, riwayat irigasi, dan panen desa.</p>
+        <p v-else class="text-muted">Rekapitulasi total tanam dan panen Anda berdasarkan komoditas.</p>
       </div>
       <button @click="exportCSV" class="btn btn-primary export-btn">
         <span>📥</span> Eksport Report (CSV)
@@ -80,7 +90,8 @@ onMounted(() => {
       </div>
       
       <div class="table-responsive" v-else>
-        <table class="data-table">
+        <!-- TABEL ADMIN -->
+        <table class="data-table" v-if="reportType === 'ADMIN_REPORT'">
           <thead>
             <tr>
               <th>Nama Petani</th>
@@ -97,6 +108,26 @@ onMounted(() => {
               </td>
               <td>{{ r.totalFields }} Blok</td>
               <td>{{ r.totalWaterings }} Kali</td>
+              <td>{{ r.totalYieldKg }} Kg</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- TABEL PETANI -->
+        <table class="data-table" v-else>
+          <thead>
+            <tr>
+              <th>Komoditas (Tanaman)</th>
+              <th>Total Luas Tanam (Ha)</th>
+              <th>Total Estimasi Panen (Kg)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(r, index) in reports" :key="index">
+              <td>
+                <div style="font-weight: 600; color: var(--primary-color);">{{ r.cropName }}</div>
+              </td>
+              <td>{{ r.totalArea.toFixed(2) }} Hektar</td>
               <td>{{ r.totalYieldKg }} Kg</td>
             </tr>
           </tbody>

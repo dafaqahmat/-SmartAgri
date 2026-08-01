@@ -5,21 +5,42 @@ const getReportData = async (req, res) => {
         const { userRole, userId } = req;
         const isPetani = userRole === 'PETANI';
 
-        // Base where for users
-        const userWhere = isPetani ? { id: userId } : { role: 'PETANI' };
+        if (isPetani) {
+            const schedules = await prisma.schedule.findMany({
+                where: { userId },
+                include: { crop: true }
+            });
 
+            const cropMap = {};
+            schedules.forEach(s => {
+                const cropName = s.crop.name;
+                if (!cropMap[cropName]) {
+                    cropMap[cropName] = { 
+                        cropName, 
+                        totalArea: 0, 
+                        totalYieldKg: 0 
+                    };
+                }
+                cropMap[cropName].totalArea += s.areaSizeInHa;
+                cropMap[cropName].totalYieldKg += s.estYieldInKg;
+            });
+
+            const reportData = Object.values(cropMap);
+            return res.status(200).json({ type: 'PETANI_REPORT', data: reportData });
+        }
+
+        // For ADMIN
         const users = await prisma.user.findMany({
-            where: userWhere,
+            where: { role: 'PETANI' },
             include: {
                 fields: true,
                 bookings: {
-                    where: { status: 'FINISHED' } // Laporan air yang sudah selesai
+                    where: { status: 'FINISHED' } 
                 },
                 schedules: true
             }
         });
 
-        // Format data
         const reportData = users.map(u => {
             const totalFields = u.fields.length;
             const totalWaterings = u.bookings.length;
@@ -35,7 +56,7 @@ const getReportData = async (req, res) => {
             };
         });
 
-        res.status(200).json({ data: reportData });
+        res.status(200).json({ type: 'ADMIN_REPORT', data: reportData });
     } catch (error) {
         res.status(500).json({ message: 'Gagal memuat laporan', error: error.message });
     }

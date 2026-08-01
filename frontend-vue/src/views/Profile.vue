@@ -13,13 +13,29 @@ const form = ref({
   confirmPassword: ''
 });
 
-onMounted(() => {
+onMounted(async () => {
   const userData = localStorage.getItem('user');
   if (userData) {
     const parsedUser = JSON.parse(userData);
     user.value = parsedUser;
-    form.value.name = parsedUser.name;
-    form.value.phone = parsedUser.phone || '';
+    
+    // Fetch fresh data from server to ensure phone is loaded
+    try {
+      const res = await api.get(`/users/${parsedUser.id}`);
+      const freshUser = res.data.data;
+      
+      user.value = freshUser;
+      form.value.name = freshUser.name;
+      form.value.phone = freshUser.phone || '';
+      
+      // Update local storage silently
+      localStorage.setItem('user', JSON.stringify(freshUser));
+    } catch (err) {
+      console.error('Failed to fetch fresh user data', err);
+      // Fallback to local storage
+      form.value.name = parsedUser.name;
+      form.value.phone = parsedUser.phone || '';
+    }
   }
 });
 
@@ -75,7 +91,7 @@ const handleUpdateProfile = async () => {
           <div class="avatar-info">
             <h3>{{ user?.name }}</h3>
             <p>{{ user?.email }}</p>
-            <span class="role-badge">{{ user?.role }}</span>
+            <span v-if="user?.role" class="role-badge" style="display: inline-block; margin-top: 0.5rem;">{{ user.role }}</span>
           </div>
         </div>
 
