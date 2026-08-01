@@ -1,0 +1,105 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  PETANI
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FINISHED
+}
+
+model User {
+  id          Int            @id @default(autoincrement())
+  name        String
+  email       String         @unique
+  password    String
+  phone       String?
+  role        Role           @default(PETANI)
+  schedules   Schedule[]
+  bookings    WaterBooking[]
+  fields      FarmField[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model FarmField {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String   // Nama Blok / Sawah (e.g., Sawah Timur)
+  address     String?  // Detail Alamat
+  latitude    Float
+  longitude   Float
+  createdAt   DateTime @default(now())
+}
+
+model Crop {
+  id              Int           @id @default(autoincrement())
+  name            String        
+  durationDays    Int           
+  yieldPerHaInTon Float         
+  schedules       Schedule[]
+  prices          MarketPrice[]
+  createdAt       DateTime      @default(now())
+}
+
+model MarketPrice {
+  id         Int      @id @default(autoincrement())
+  cropId     Int
+  crop       Crop     @relation(fields: [cropId], references: [id], onDelete: Cascade)
+  pricePerKg Int      
+  createdAt  DateTime @default(now())
+}
+
+model Schedule {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cropId         Int
+  crop           Crop     @relation(fields: [cropId], references: [id], onDelete: Cascade)
+  areaSizeInHa   Float    
+  plantDate      DateTime 
+  estHarvestDate DateTime 
+  estYieldInKg      Float    
+  realRevenueRupiah Float?   
+  status            String   @default("PLANTED") 
+  createdAt      DateTime @default(now())
+}
+
+model WaterBooking {
+  id            Int           @id @default(autoincrement())
+  userId        Int
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  blockName     String        
+  bookingDate   DateTime      
+  startTime     String        
+  endTime       String        
+  durationHours Int           
+  status        BookingStatus @default(PENDING)
+  reason        String?       
+  createdBy     String        @default("SELF") 
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+// Pengaturan hari dan slot jam yang diizinkan untuk booking irigasi
+model IrrigationSetting {
+  id          Int      @id @default(autoincrement())
+  dayOfWeek   Int      // 0=Minggu, 1=Senin, 2=Selasa, 3=Rabu, 4=Kamis, 5=Jumat, 6=Sabtu
+  startTime   String   // Format HH:mm, contoh: "06:00"
+  endTime     String   // Format HH:mm, contoh: "12:00"
+  description String?  // Keterangan opsional
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
