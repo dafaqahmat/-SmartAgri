@@ -249,6 +249,9 @@ const editBooking = async (req, res) => {
                 return res.status(400).json({ message: 'Tidak dapat mengedit booking yang sudah disetujui, ditolak, atau selesai.' });
             }
         } else {
+            if (booking.createdBy === 'SELF') {
+                return res.status(403).json({ message: 'Admin tidak dapat mengedit pengajuan yang dibuat oleh Petani.' });
+            }
             if (booking.status === 'FINISHED') {
                 return res.status(400).json({ message: 'Admin tidak dapat mengedit booking yang sudah selesai.' });
             }
@@ -311,6 +314,9 @@ const deleteBooking = async (req, res) => {
                 return res.status(400).json({ message: 'Tidak dapat menghapus booking yang sudah disetujui, ditolak, atau selesai.' });
             }
         } else {
+            if (booking.createdBy === 'SELF') {
+                return res.status(403).json({ message: 'Admin tidak dapat menghapus pengajuan yang dibuat oleh Petani.' });
+            }
             if (booking.status === 'FINISHED') {
                 return res.status(400).json({ message: 'Admin tidak dapat menghapus booking yang sudah selesai.' });
             }

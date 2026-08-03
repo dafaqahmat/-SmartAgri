@@ -572,7 +572,7 @@ const onTimeChange = async () => {
                 </button>
 
                 <!-- EDIT / HAPUS -->
-                <template v-if="(userRole === 'ADMIN' && b.status !== 'FINISHED') || (userRole === 'PETANI' && b.status !== 'APPROVED' && b.status !== 'FINISHED' && b.status !== 'REJECTED' && userId === b.userId)">
+                <template v-if="(userRole === 'ADMIN' && b.status !== 'FINISHED' && b.createdBy !== 'SELF') || (userRole === 'PETANI' && b.status !== 'APPROVED' && b.status !== 'FINISHED' && b.status !== 'REJECTED' && userId === b.userId)">
                   <button 
                     @click="openEditBookingModal(b)" 
                     class="btn-action" style="background: transparent; color: var(--text-muted); border: 1px solid var(--text-muted);">
