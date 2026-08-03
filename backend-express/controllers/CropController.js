@@ -93,7 +93,10 @@ const updateCrop = async (req, res) => {
 // Ambil Semua Tanaman
 const getAllCrops = async (req, res) => {
     try {
+        const where = req.userRole === 'ADMIN' ? {} : { deletedAt: null };
+
         const crops = await prisma.crop.findMany({
+            where,
             include: { prices: { orderBy: { createdAt: 'desc' }, take: 1 } }
         });
         res.status(200).json({ data: crops });
@@ -118,9 +121,38 @@ const updateMarketPrice = async (req, res) => {
     }
 };
 
+// Hapus Tanaman (Soft Delete)
+const deleteCrop = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma.crop.update({
+            where: { id: parseInt(id) },
+            data: { deletedAt: new Date(), isActive: false }
+        });
+        res.status(200).json({ message: 'Tanaman berhasil dinonaktifkan' });
+    } catch (error) {
+        res.status(500).json({ message: 'Gagal menonaktifkan tanaman', error: error.message });
+    }
+};
+
+const restoreCrop = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma.crop.update({
+            where: { id: parseInt(id) },
+            data: { deletedAt: null, isActive: true }
+        });
+        res.status(200).json({ message: 'Tanaman berhasil diaktifkan kembali' });
+    } catch (error) {
+        res.status(500).json({ message: 'Gagal mengaktifkan tanaman', error: error.message });
+    }
+};
+
 module.exports = {
     createCrop,
     updateCrop,
     getAllCrops,
-    updateMarketPrice
+    updateMarketPrice,
+    deleteCrop,
+    restoreCrop
 };

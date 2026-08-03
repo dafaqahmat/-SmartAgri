@@ -31,6 +31,8 @@ model User {
   fields      FarmField[]
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+  isActive    Boolean        @default(true)
+  deletedAt   DateTime?
 }
 
 model FarmField {
@@ -52,6 +54,8 @@ model Crop {
   schedules       Schedule[]
   prices          MarketPrice[]
   createdAt       DateTime      @default(now())
+  isActive        Boolean       @default(true)
+  deletedAt       DateTime?
 }
 
 model MarketPrice {
@@ -75,6 +79,16 @@ model Schedule {
   realRevenueRupiah Float?   
   status            String   @default("PLANTED") 
   createdAt      DateTime @default(now())
+  expenses       ScheduleExpense[]
+}
+
+model ScheduleExpense {
+  id             Int      @id @default(autoincrement())
+  scheduleId     Int
+  schedule       Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  description    String
+  amountRupiah   Float
+  date           DateTime @default(now())
 }
 
 model WaterBooking {

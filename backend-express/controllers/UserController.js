@@ -15,8 +15,10 @@ const getUsers = async (req, res) => {
                 name: true,
                 email: true,
                 phone: true,
+                isActive: true,
+                deletedAt: true,
                 createdAt: true,
-                fields: true // INCLUDE the FarmFields!
+                fields: true
             }
         });
         res.status(200).json({ data: users });
@@ -43,6 +45,7 @@ const getUserById = async (req, res) => {
                 email: true,
                 phone: true,
                 role: true,
+                isActive: true,
                 createdAt: true,
                 fields: true
             }
@@ -75,7 +78,7 @@ const createUser = async (req, res) => {
                 phone,
                 role: 'PETANI'
             },
-            select: { id: true, name: true, email: true, phone: true }
+            select: { id: true, name: true, email: true, phone: true, isActive: true }
         });
 
         res.status(201).json({ message: 'Petani berhasil ditambahkan', data: newUser });
@@ -90,12 +93,24 @@ const updateUser = async (req, res) => {
         if (req.userRole !== 'ADMIN') return res.status(403).json({ message: 'Akses ditolak' });
         
         const { id } = req.params;
-        const { name, phone } = req.body;
+        const { name, phone, isActive, deletedAt } = req.body;
+
+        const updateData = {};
+        if (name !== undefined) updateData.name = name;
+        if (phone !== undefined) updateData.phone = phone;
+
+        if (isActive !== undefined) {
+            updateData.isActive = isActive === true || isActive === 'true';
+        }
+
+        if (deletedAt === null) {
+            updateData.deletedAt = null;
+        }
 
         const updatedUser = await prisma.user.update({
             where: { id: parseInt(id) },
-            data: { name, phone },
-            select: { id: true, name: true, phone: true }
+            data: updateData,
+            select: { id: true, name: true, phone: true, isActive: true, deletedAt: true }
         });
 
         res.status(200).json({ message: 'Data petani berhasil diupdate', data: updatedUser });
@@ -104,12 +119,17 @@ const updateUser = async (req, res) => {
     }
 };
 
-// Delete user
+// Delete user (Soft Delete)
 const deleteUser = async (req, res) => {
     try {
         if (req.userRole !== 'ADMIN') return res.status(403).json({ message: 'Akses ditolak' });
         const { id } = req.params;
-        await prisma.user.delete({ where: { id: parseInt(id) } });
+        
+        await prisma.user.update({ 
+            where: { id: parseInt(id) },
+            data: { deletedAt: new Date(), isActive: false }
+        });
+        
         res.status(200).json({ message: 'Petani berhasil dihapus' });
     } catch (error) {
         res.status(500).json({ message: 'Gagal menghapus petani', error: error.message });

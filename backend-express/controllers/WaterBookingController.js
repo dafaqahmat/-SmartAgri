@@ -235,10 +235,98 @@ const rescheduleBooking = async (req, res) => {
     }
 };
 
+const editBooking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { blockName, bookingDate, startTime, endTime, durationHours } = req.body;
+
+        const booking = await prisma.waterBooking.findUnique({ where: { id: parseInt(id) } });
+        if (!booking) return res.status(404).json({ message: 'Booking tidak ditemukan' });
+
+        if (req.userRole !== 'ADMIN') {
+            if (booking.userId !== req.userId) return res.status(403).json({ message: 'Akses ditolak' });
+            if (booking.status === 'APPROVED' || booking.status === 'FINISHED' || booking.status === 'REJECTED') {
+                return res.status(400).json({ message: 'Tidak dapat mengedit booking yang sudah disetujui, ditolak, atau selesai.' });
+            }
+        } else {
+            if (booking.status === 'FINISHED') {
+                return res.status(400).json({ message: 'Admin tidak dapat mengedit booking yang sudah selesai.' });
+            }
+        }
+
+        const bDate = new Date(bookingDate);
+
+        // Validasi Pencegahan Bentrok Jam Global (Hanya boleh 1 sawah dialiri pada satu waktu)
+        const existingBookings = await prisma.waterBooking.findMany({
+            where: {
+                bookingDate: bDate,
+                status: 'APPROVED',
+                id: { not: parseInt(id) }
+            },
+            include: { user: true }
+        });
+
+        const convertToMinutes = (timeStr) => {
+            const [h, m] = timeStr.split(':');
+            return parseInt(h) * 60 + parseInt(m);
+        };
+        const startMins = convertToMinutes(startTime);
+        const endMins = convertToMinutes(endTime);
+
+        let hasConflict = false;
+        let conflictDetails = '';
+        for (const existing of existingBookings) {
+            const exStart = convertToMinutes(existing.startTime);
+            const exEnd = convertToMinutes(existing.endTime);
+            
+            if (startMins < exEnd && endMins > exStart) {
+                hasConflict = true;
+                const ownerName = existing.user?.name || 'Petani lain';
+                conflictDetails = `${existing.blockName} milik ${ownerName}`;
+                break;
+            }
+        }
+
+        if (hasConflict) {
+            return res.status(409).json({ message: `Jadwal bentrok! Aliran air sedang digunakan oleh ${conflictDetails} pada rentang jam tersebut. Hanya 1 sawah yang boleh diairi dalam satu waktu.` });
+        }
+
+        const updated = await prisma.waterBooking.update({
+            where: { id: parseInt(id) },
+            data: { blockName, bookingDate: new Date(bookingDate), startTime, endTime, durationHours: parseInt(durationHours) }
+        });
+        res.status(200).json({ message: 'Booking berhasil diupdate', data: updated });
+    } catch(err) { res.status(500).json({ message: 'Gagal update' }) }
+};
+
+const deleteBooking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const booking = await prisma.waterBooking.findUnique({ where: { id: parseInt(id) } });
+        if (!booking) return res.status(404).json({ message: 'Booking tidak ditemukan' });
+
+        if (req.userRole !== 'ADMIN') {
+            if (booking.userId !== req.userId) return res.status(403).json({ message: 'Akses ditolak' });
+            if (booking.status === 'APPROVED' || booking.status === 'FINISHED' || booking.status === 'REJECTED') {
+                return res.status(400).json({ message: 'Tidak dapat menghapus booking yang sudah disetujui, ditolak, atau selesai.' });
+            }
+        } else {
+            if (booking.status === 'FINISHED') {
+                return res.status(400).json({ message: 'Admin tidak dapat menghapus booking yang sudah selesai.' });
+            }
+        }
+
+        await prisma.waterBooking.delete({ where: { id: parseInt(id) } });
+        res.status(200).json({ message: 'Booking berhasil dihapus' });
+    } catch(err) { res.status(500).json({ message: 'Gagal hapus' }) }
+};
+
 module.exports = {
     createBooking,
     getBookings,
     updateBookingStatus,
     finishBooking,
-    rescheduleBooking
+    rescheduleBooking,
+    editBooking,
+    deleteBooking
 };

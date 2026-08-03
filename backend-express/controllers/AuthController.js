@@ -50,8 +50,12 @@ const login = async (req, res) => {
             where: { email: email }
         });
 
-        if (!user) {
-            return res.status(401).json({ message: 'Email atau Password salah.' });
+        if (!user || user.deletedAt !== null) {
+            return res.status(401).json({ message: 'Email atau Password salah atau akun telah dihapus.' });
+        }
+        
+        if (!user.isActive) {
+            return res.status(403).json({ message: 'Akun Anda sedang dinonaktifkan. Silakan hubungi Admin.' });
         }
 
         // Cek kecocokan password

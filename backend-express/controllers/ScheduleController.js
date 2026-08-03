@@ -44,20 +44,23 @@ const getSchedules = async (req, res) => {
             include: {
                 crop: {
                     include: {
-                        prices: { orderBy: { createdAt: 'desc' }, take: 1 } // Ambil harga terbaru
+                        prices: { orderBy: { createdAt: 'desc' }, take: 1 } 
                     }
                 },
-                user: { select: { name: true } }
+                user: { select: { name: true } },
+                expenses: true
             },
             orderBy: { createdAt: 'desc' }
         });
 
-        // Mapping Data untuk menambahkan Estimasi Rupiah secara dinamis atau mengunci Nilai jika sudah panen
         const dataWithEstimates = schedules.map(sched => {
             const latestPrice = sched.crop.prices.length > 0 ? sched.crop.prices[0].pricePerKg : 0;
+            const totalExpenses = sched.expenses.reduce((sum, e) => sum + e.amountRupiah, 0);
+
             return {
                 ...sched,
                 currentPriceRef: latestPrice,
+                totalExpensesRupiah: totalExpenses,
                 estRevenueRupiah: sched.status === 'HARVESTED' && sched.realRevenueRupiah != null 
                     ? sched.realRevenueRupiah 
                     : sched.estYieldInKg * latestPrice
@@ -87,7 +90,6 @@ const updateSchedule = async (req, res) => {
         // Kalkulasi pendapatan final berdasarkan harga riil dari petani
         let realRevenueRupiah = null;
         if (status === 'HARVESTED' || (!status && schedule.status === 'HARVESTED')) {
-            // Jika ada harga riil yang diinput petani, pakai itu, kalau tidak ambil harga master terakhir
             let finalPrice = 0;
             if (realPricePerKg && !isNaN(parseInt(realPricePerKg))) {
                 finalPrice = parseInt(realPricePerKg);
@@ -116,8 +118,116 @@ const updateSchedule = async (req, res) => {
     }
 };
 
+const addExpense = async (req, res) => {
+    try {
+        const { id } = req.params; // scheduleId
+        const { description, amountRupiah } = req.body;
+
+        const schedule = await prisma.schedule.findUnique({ where: { id: parseInt(id) } });
+        if (!schedule) return res.status(404).json({ message: 'Jadwal tidak ditemukan' });
+        
+        if (schedule.userId !== req.userId) {
+            return res.status(403).json({ message: 'Tidak diizinkan' });
+        }
+
+        const expense = await prisma.scheduleExpense.create({
+            data: {
+                scheduleId: parseInt(id),
+                description,
+                amountRupiah: parseFloat(amountRupiah)
+            }
+        });
+
+        res.status(201).json({ message: 'Pengeluaran berhasil ditambahkan', data: expense });
+    } catch (error) {
+        res.status(500).json({ message: 'Gagal menambah pengeluaran', error: error.message });
+    }
+};
+
+const editScheduleBase = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { cropId, areaSizeInHa, plantDate } = req.body;
+        
+        const schedule = await prisma.schedule.findUnique({ where: { id: parseInt(id) } });
+        if (!schedule) return res.status(404).json({ message: 'Jadwal tidak ditemukan' });
+        if (schedule.userId !== req.userId && req.userRole !== 'ADMIN') return res.status(403).json({ message: 'Tidak diizinkan' });
+
+        const crop = await prisma.crop.findUnique({ where: { id: parseInt(cropId) } });
+        if (!crop) return res.status(404).json({ message: 'Tanaman tidak ditemukan' });
+
+        const startDate = new Date(plantDate);
+        const estHarvestDate = new Date(startDate);
+        estHarvestDate.setDate(startDate.getDate() + crop.durationDays);
+
+        const estYieldInKg = parseFloat(areaSizeInHa) * crop.yieldPerHaInTon * 1000;
+
+        const updated = await prisma.schedule.update({
+            where: { id: parseInt(id) },
+            data: {
+                cropId: parseInt(cropId),
+                areaSizeInHa: parseFloat(areaSizeInHa),
+                plantDate: startDate,
+                estHarvestDate,
+                estYieldInKg
+            }
+        });
+        res.status(200).json({ message: 'Jadwal tanam berhasil diupdate', data: updated });
+    } catch (error) {
+        res.status(500).json({ message: 'Gagal update jadwal', error: error.message });
+    }
+};
+
+const deleteSchedule = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const schedule = await prisma.schedule.findUnique({ where: { id: parseInt(id) } });
+        if (!schedule) return res.status(404).json({ message: 'Jadwal tidak ditemukan' });
+        if (schedule.userId !== req.userId && req.userRole !== 'ADMIN') return res.status(403).json({ message: 'Tidak diizinkan' });
+
+        await prisma.schedule.delete({ where: { id: parseInt(id) } });
+        res.status(200).json({ message: 'Jadwal berhasil dihapus' });
+    } catch (error) {
+        res.status(500).json({ message: 'Gagal menghapus jadwal', error: error.message });
+    }
+};
+
+const editExpense = async (req, res) => {
+    try {
+        const { expenseId } = req.params;
+        const { description, amountRupiah } = req.body;
+        
+        const expense = await prisma.scheduleExpense.findUnique({ where: { id: parseInt(expenseId) }, include: { schedule: true } });
+        if (!expense) return res.status(404).json({ message: 'Pengeluaran tidak ditemukan' });
+        if (expense.schedule.userId !== req.userId) return res.status(403).json({ message: 'Tidak diizinkan' });
+
+        const updated = await prisma.scheduleExpense.update({
+            where: { id: parseInt(expenseId) },
+            data: { description, amountRupiah: parseFloat(amountRupiah) }
+        });
+        res.status(200).json({ message: 'Pengeluaran diupdate', data: updated });
+    } catch(err) { res.status(500).json({ message: 'Gagal update pengeluaran' }) }
+};
+
+const deleteExpense = async (req, res) => {
+    try {
+        const { expenseId } = req.params;
+        const expense = await prisma.scheduleExpense.findUnique({ where: { id: parseInt(expenseId) }, include: { schedule: true } });
+        if (!expense) return res.status(404).json({ message: 'Pengeluaran tidak ditemukan' });
+        if (expense.schedule.userId !== req.userId) return res.status(403).json({ message: 'Tidak diizinkan' });
+
+        await prisma.scheduleExpense.delete({ where: { id: parseInt(expenseId) } });
+        res.status(200).json({ message: 'Pengeluaran dihapus' });
+    } catch(err) { res.status(500).json({ message: 'Gagal hapus pengeluaran' }) }
+};
+
 module.exports = {
     createSchedule,
     getSchedules,
-    updateSchedule
+    updateSchedule,
+    addExpense,
+    editScheduleBase,
+    deleteSchedule,
+    editExpense,
+    deleteExpense
 };

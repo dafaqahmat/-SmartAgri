@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue';
 import api from '../api';
 import { toast } from 'vue3-toastify';
 
+import Swal from 'sweetalert2';
+
 const crops = ref([]);
 const searchQuery = ref('');
 
@@ -49,6 +51,47 @@ const fetchCrops = async () => {
     crops.value = res.data.data;
   } catch (err) {
     console.error(err);
+  }
+};
+
+const deleteCrop = async (id) => {
+  const result = await Swal.fire({
+    title: 'Nonaktifkan Tanaman?',
+    text: "Tanaman akan disembunyikan dan tidak bisa dipilih petani.",
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#64748b',
+    confirmButtonText: 'Ya, Nonaktifkan!',
+    cancelButtonText: 'Batal',
+    background: '#0f172a',
+    color: '#fff'
+  });
+
+  if (result.isConfirmed) {
+    try {
+      await api.delete(`/crops/${id}`);
+      Swal.fire({
+        title: 'Nonaktif!',
+        text: 'Data tanaman berhasil dinonaktifkan.',
+        icon: 'success',
+        background: '#0f172a',
+        color: '#fff'
+      });
+      fetchCrops();
+    } catch (err) {
+      toast.error('Gagal menonaktifkan tanaman');
+    }
+  }
+};
+
+const restoreCrop = async (id) => {
+  try {
+    await api.put(`/crops/${id}/restore`);
+    toast.success('Tanaman berhasil diaktifkan kembali!');
+    fetchCrops();
+  } catch (err) {
+    toast.error('Gagal mengaktifkan tanaman');
   }
 };
 
@@ -102,12 +145,13 @@ const submitCrop = async () => {
             <th>Masa Tanam</th>
             <th>Standar Panen (Ha)</th>
             <th>Harga Terbaru (Per Kg)</th>
+            <th>Status</th>
             <th>Aksi</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="filteredCrops.length === 0">
-            <td colspan="6" class="text-center py-4">Tidak ada data tanaman yang cocok.</td>
+            <td colspan="7" class="text-center py-4">Tidak ada data tanaman yang cocok.</td>
           </tr>
           <tr v-for="c in filteredCrops" :key="c.id">
             <td>#{{ c.id }}</td>
@@ -121,7 +165,15 @@ const submitCrop = async () => {
               <span v-else class="text-muted">-</span>
             </td>
             <td>
-              <button class="btn btn-secondary-outline" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" @click="openUpdateModal(c)">Update Data</button>
+              <span v-if="!c.deletedAt" style="background: rgba(52, 211, 153, 0.2); color: #34d399; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">Aktif</span>
+              <span v-else style="background: rgba(239, 68, 68, 0.2); color: #ef4444; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">Nonaktif</span>
+            </td>
+            <td>
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button class="btn btn-secondary-outline" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" @click="openUpdateModal(c)">Update Data</button>
+                <button v-if="!c.deletedAt" class="btn btn-secondary-outline" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--danger-color); color: var(--danger-color); background: transparent;" @click="deleteCrop(c.id)">Nonaktifkan (Hapus)</button>
+                <button v-else class="btn btn-secondary-outline" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--warning-color); color: var(--warning-color); background: transparent;" @click="restoreCrop(c.id)">Aktifkan Kembali</button>
+              </div>
             </td>
           </tr>
         </tbody>

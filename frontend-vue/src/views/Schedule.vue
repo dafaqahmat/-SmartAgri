@@ -61,6 +61,120 @@ const submitUpdate = async () => {
   }
 };
 
+import Swal from 'sweetalert2';
+
+// Edit Base Schedule
+const isModalEditBaseOpen = ref(false);
+const formEditBase = ref({ id: '', cropId: '', areaSizeInHa: '', plantDate: '' });
+const editCropSearch = ref('');
+
+const openEditBaseModal = (sched) => {
+  formEditBase.value.id = sched.id;
+  formEditBase.value.cropId = sched.cropId;
+  formEditBase.value.areaSizeInHa = sched.areaSizeInHa;
+  formEditBase.value.plantDate = new Date(sched.plantDate).toISOString().split('T')[0];
+  editCropSearch.value = sched.crop?.name || '';
+  isModalEditBaseOpen.value = true;
+};
+
+const submitEditBase = async () => {
+  try {
+    await api.put(`/schedules/${formEditBase.value.id}`, formEditBase.value);
+    isModalEditBaseOpen.value = false;
+    fetchSchedules();
+    toast.success('Jadwal berhasil diperbarui!');
+  } catch (err) {
+    toast.error('Gagal memperbarui jadwal');
+  }
+};
+
+const deleteSchedule = async (id) => {
+  const result = await Swal.fire({
+    title: 'Hapus Jadwal?',
+    text: "Data jadwal dan pengeluarannya akan terhapus permanen.",
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#64748b',
+    confirmButtonText: 'Ya, Hapus',
+    background: '#0f172a',
+    color: '#fff'
+  });
+  if (result.isConfirmed) {
+    try {
+      await api.delete(`/schedules/${id}`);
+      fetchSchedules();
+      Swal.fire({ title: 'Terhapus', icon: 'success', background: '#0f172a', color: '#fff' });
+    } catch(err) { toast.error('Gagal menghapus jadwal'); }
+  }
+};
+
+// --- EXPENSE LOGIC ---
+const isModalExpenseOpen = ref(false);
+const activeExpenseSchedule = ref(null);
+const formExpense = ref({
+  description: '',
+  amountRupiah: ''
+});
+const editingExpenseId = ref(null);
+
+const openExpenseModal = (sched) => {
+  activeExpenseSchedule.value = sched;
+  formExpense.value.description = '';
+  formExpense.value.amountRupiah = '';
+  editingExpenseId.value = null;
+  isModalExpenseOpen.value = true;
+};
+
+const startEditExpense = (exp) => {
+  editingExpenseId.value = exp.id;
+  formExpense.value.description = exp.description;
+  formExpense.value.amountRupiah = exp.amountRupiah;
+};
+
+const cancelEditExpense = () => {
+  editingExpenseId.value = null;
+  formExpense.value.description = '';
+  formExpense.value.amountRupiah = '';
+};
+
+const deleteExpense = async (expenseId) => {
+  if (!confirm('Hapus pengeluaran ini?')) return;
+  try {
+    await api.delete(`/schedules/expenses/${expenseId}`);
+    toast.success('Pengeluaran dihapus');
+    const updatedRes = await api.get('/schedules');
+    schedules.value = updatedRes.data.data;
+    activeExpenseSchedule.value = schedules.value.find(s => s.id === activeExpenseSchedule.value.id);
+  } catch(err) { toast.error('Gagal hapus pengeluaran'); }
+};
+
+const submitExpense = async () => {
+  try {
+    if (editingExpenseId.value) {
+      await api.put(`/schedules/expenses/${editingExpenseId.value}`, formExpense.value);
+      toast.success('Pengeluaran diupdate');
+      editingExpenseId.value = null;
+    } else {
+      await api.post(`/schedules/${activeExpenseSchedule.value.id}/expenses`, formExpense.value);
+      toast.success('Pengeluaran dicatat!');
+    }
+    
+    // Refresh table data
+    const updatedRes = await api.get('/schedules');
+    schedules.value = updatedRes.data.data;
+    
+    // Update local active schedule to refresh the list in modal
+    activeExpenseSchedule.value = schedules.value.find(s => s.id === activeExpenseSchedule.value.id);
+    
+    // Clear form
+    formExpense.value.description = '';
+    formExpense.value.amountRupiah = '';
+  } catch (err) {
+    toast.error(err.response?.data?.message || 'Gagal menyimpan biaya');
+  }
+};
+
 const cropSearch = ref('');
 const isCropDropdownOpen = ref(false);
 
@@ -151,13 +265,15 @@ const submitSchedule = async () => {
             <th>Tgl Tanam</th>
             <th>Tgl Panen (Est)</th>
             <th>Tonase (Kg)</th>
-            <th>Nilai (Rp)</th>
+            <th>Pendapatan (Rp)</th>
+            <th>Total Biaya (Rp)</th>
+            <th>Hasil Bersih (Rp)</th>
             <th>Aksi</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="filteredSchedules.length === 0">
-            <td colspan="8" class="text-center py-4">Belum ada data atau jadwal tidak ditemukan.</td>
+            <td colspan="10" class="text-center py-4">Belum ada data atau jadwal tidak ditemukan.</td>
           </tr>
           <tr v-for="s in filteredSchedules" :key="s.id">
             <td>{{ s.user?.name }}</td>
@@ -169,14 +285,73 @@ const submitSchedule = async () => {
             <td class="text-emerald">
               Rp {{ new Intl.NumberFormat('id-ID').format(s.estRevenueRupiah) }}
             </td>
+            <td style="color: #ef4444;">
+              -Rp {{ new Intl.NumberFormat('id-ID').format(s.totalExpensesRupiah || 0) }}
+            </td>
+            <td style="color: #60a5fa; font-weight: 600;">
+              Rp {{ new Intl.NumberFormat('id-ID').format(s.estRevenueRupiah - (s.totalExpensesRupiah || 0)) }}
+            </td>
             <td>
-              <button v-if="s.status !== 'HARVESTED' && currentUser && s.userId === currentUser.id" class="btn" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent;" @click="openUpdateModal(s)">Update Panen</button>
-              <span v-else-if="s.status !== 'HARVESTED'" class="text-muted" style="font-size: 0.85rem;">⏳ Menunggu</span>
-              <span v-else class="text-emerald" style="font-size: 0.85rem; font-weight: bold;">✅ Selesai</span>
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                <button v-if="currentUser && s.userId === currentUser.id" class="btn" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--warning-color); color: var(--warning-color); background: transparent;" @click="openExpenseModal(s)">💰 Catat Biaya</button>
+                <button v-if="s.status !== 'HARVESTED' && currentUser && s.userId === currentUser.id" class="btn" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent;" @click="openUpdateModal(s)">Update Panen</button>
+                
+                <button v-if="s.status !== 'HARVESTED' && currentUser && s.userId === currentUser.id" class="btn btn-secondary-outline" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--text-muted); color: var(--text-muted); background: transparent;" @click="openEditBaseModal(s)">Edit</button>
+                <button v-if="currentUser && s.userId === currentUser.id" class="btn btn-secondary-outline" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--danger-color); color: var(--danger-color); background: transparent;" @click="deleteSchedule(s.id)">Hapus</button>
+                
+                <span v-else-if="s.status !== 'HARVESTED' && (!currentUser || s.userId !== currentUser.id)" class="text-muted" style="font-size: 0.85rem;">⏳ Menunggu</span>
+                <span v-if="s.status === 'HARVESTED'" class="text-emerald" style="font-size: 0.85rem; font-weight: bold;">✅ Selesai</span>
+              </div>
             </td>
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Modal Form: PENGELUARAN (EXPENSES) -->
+    <div v-if="isModalExpenseOpen" class="modal-overlay">
+      <div class="modal-content glass-panel" style="max-width: 500px;">
+        <h3>Catat Pengeluaran: {{ activeExpenseSchedule?.crop?.name }}</h3>
+        
+        <!-- List Pengeluaran Sebelumnya -->
+        <div v-if="activeExpenseSchedule?.expenses?.length > 0" style="margin-bottom: 1.5rem; max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: var(--radius-md);">
+          <div v-for="e in activeExpenseSchedule.expenses" :key="e.id" style="display: flex; flex-direction: column; padding-bottom: 0.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.9rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span>{{ e.description }}</span>
+              <span style="color: #fca5a5; font-weight: bold;">Rp {{ new Intl.NumberFormat('id-ID').format(e.amountRupiah) }}</span>
+            </div>
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.3rem;">
+              <button style="background: none; border: none; color: #60a5fa; cursor: pointer; font-size: 0.8rem; padding: 0;" @click="startEditExpense(e)">✏️ Edit</button>
+              <button style="background: none; border: none; color: #ef4444; cursor: pointer; font-size: 0.8rem; padding: 0;" @click="deleteExpense(e.id)">🗑️ Hapus</button>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 0.5rem;">
+            <span>Total Pengeluaran:</span>
+            <span style="color: #ef4444;">Rp {{ new Intl.NumberFormat('id-ID').format(activeExpenseSchedule.totalExpensesRupiah) }}</span>
+          </div>
+        </div>
+        <p v-else class="text-muted" style="margin-bottom: 1.5rem; font-size: 0.9rem;">Belum ada pengeluaran tercatat.</p>
+
+        <form @submit.prevent="submitExpense">
+          <div class="form-group">
+            <label class="form-label">Deskripsi Pengeluaran</label>
+            <input type="text" v-model="formExpense.description" class="form-input" placeholder="Contoh: Beli Benih, Obat Hama..." required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nominal (Rp)</label>
+            <input type="number" v-model="formExpense.amountRupiah" class="form-input" placeholder="Contoh: 150000" required />
+          </div>
+          <div class="modal-actions" style="justify-content: space-between; display: flex;">
+            <div>
+              <button v-if="editingExpenseId" type="button" class="btn btn-secondary-outline" style="border: 1px solid var(--text-muted); padding: 0.5rem 1rem; border-radius: var(--radius-md); color: white; cursor: pointer; background: transparent;" @click="cancelEditExpense">Batal Edit</button>
+            </div>
+            <div style="display: flex; gap: 1rem;">
+              <button type="button" class="btn btn-secondary-outline" style="border: 1px solid var(--text-muted); padding: 0.5rem 1rem; border-radius: var(--radius-md); color: white; cursor: pointer; background: transparent;" @click="isModalExpenseOpen = false">Tutup</button>
+              <button type="submit" class="btn" style="background: var(--warning-color); color: #1e293b; font-weight: bold;">{{ editingExpenseId ? 'Update Biaya' : 'Tambah Biaya' }}</button>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
 
     <!-- Modal Form: UPDATE PANEN -->
@@ -195,6 +370,47 @@ const submitSchedule = async () => {
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary-outline" style="border: 1px solid var(--text-muted); padding: 0.5rem 1rem; border-radius: var(--radius-md); color: white; cursor: pointer; background: transparent;" @click="isModalUpdateOpen = false">Batal</button>
             <button type="submit" class="btn btn-primary">Simpan Panen</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal Form: EDIT JADWAL AWAL -->
+    <div v-if="isModalEditBaseOpen" class="modal-overlay" @click="closeDropdown">
+      <div class="modal-content glass-panel" @click.stop>
+        <h3>Edit Jadwal Tanam</h3>
+        <form @submit.prevent="submitEditBase">
+          <div class="form-group" style="position: relative;">
+            <label class="form-label">Pilih Tanaman (Komoditas)</label>
+            <input 
+              type="text" 
+              v-model="editCropSearch" 
+              @focus="isCropDropdownOpen = true"
+              @input="handleSearchInput"
+              class="form-input" 
+              placeholder="Ketik nama tanaman..." 
+              required 
+            />
+            <ul v-if="isCropDropdownOpen && filteredCrops.length > 0" class="dropdown-list">
+              <li v-for="c in filteredCrops" :key="c.id" @click="formEditBase.cropId = c.id; editCropSearch = c.name; isCropDropdownOpen = false">
+                {{ c.name }} <span class="text-muted" style="font-size: 0.8rem;">(Panen: {{ c.durationDays }}hr)</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Luas Lahan (Hektar)</label>
+            <input type="number" step="0.01" v-model="formEditBase.areaSizeInHa" class="form-input" placeholder="Misal: 0.5" required />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Tanggal Tanam</label>
+            <input type="date" v-model="formEditBase.plantDate" class="form-input" required />
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary-outline" @click="isModalEditBaseOpen = false">Batal</button>
+            <button type="submit" class="btn btn-primary">Simpan Perubahan</button>
           </div>
         </form>
       </div>

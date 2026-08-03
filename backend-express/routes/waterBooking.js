@@ -5,7 +5,9 @@ const {
     getBookings, 
     updateBookingStatus, 
     finishBooking, 
-    rescheduleBooking 
+    rescheduleBooking,
+    editBooking,
+    deleteBooking
 } = require('../controllers/WaterBookingController');
 const { verifyToken, verifyAdmin } = require('../middleware/authMiddleware');
 
@@ -18,5 +20,7 @@ router.put('/:id/status', verifyToken, verifyAdmin, updateBookingStatus);
 // Bisa Petani atau Admin
 router.put('/:id/finish', verifyToken, finishBooking);
 router.put('/:id/reschedule', verifyToken, rescheduleBooking);
+router.put('/:id', verifyToken, editBooking);
+router.delete('/:id', verifyToken, deleteBooking);
 
 module.exports = router;
