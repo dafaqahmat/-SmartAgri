@@ -9,23 +9,43 @@ const isModalOpen = ref(false);
 const currentUser = ref(null);
 
 const tableSearchQuery = ref('');
+const schedCurrentPage = ref(1);
+const schedPerPage = 10;
 
 const filteredSchedules = computed(() => {
-  if (!tableSearchQuery.value) return schedules.value;
-  const q = tableSearchQuery.value.toLowerCase();
-  return schedules.value.filter(s => {
-    const searchString = `
-      ${s.user?.name || ''} 
-      ${s.crop?.name || ''} 
-      ${s.areaSizeInHa || ''} 
-      ${new Date(s.plantDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-      ${new Date(s.estHarvestDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-      ${s.estYieldInKg || ''}
-      ${s.estRevenueRupiah || ''}
-    `.toLowerCase();
-    return searchString.includes(q);
-  });
+  let list = [...schedules.value].sort((a, b) => b.id - a.id);
+  if (tableSearchQuery.value) {
+    const q = tableSearchQuery.value.toLowerCase();
+    list = list.filter(s => {
+      const searchString = `
+        ${s.user?.name || ''} 
+        ${s.crop?.name || ''} 
+        ${s.areaSizeInHa || ''} 
+        ${s.estYieldInKg || ''}
+        ${s.estRevenueRupiah || ''}
+      `.toLowerCase();
+      return searchString.includes(q);
+    });
+  }
+  return list;
 });
+
+const totalSchedPages = computed(() => Math.max(1, Math.ceil(filteredSchedules.value.length / schedPerPage)));
+
+const paginatedSchedules = computed(() => {
+  const start = (schedCurrentPage.value - 1) * schedPerPage;
+  return filteredSchedules.value.slice(start, start + schedPerPage);
+});
+
+const schedPageRange = computed(() => {
+  const total = totalSchedPages.value;
+  const cur = schedCurrentPage.value;
+  let pages = [];
+  for (let i = Math.max(1, cur - 2); i <= Math.min(total, cur + 2); i++) pages.push(i);
+  return pages;
+});
+
+const goToSchedPage = (p) => { if (p >= 1 && p <= totalSchedPages.value) schedCurrentPage.value = p; };
 const form = ref({
   cropId: '',
   areaSizeInHa: '',
@@ -256,56 +276,66 @@ const submitSchedule = async () => {
 
     <!-- Table -->
     <div class="glass-panel overflow-hidden">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Petani</th>
-            <th>Tanaman</th>
-            <th>Luas Lahan</th>
-            <th>Tgl Tanam</th>
-            <th>Tgl Panen (Est)</th>
-            <th>Tonase (Kg)</th>
-            <th>Pendapatan (Rp)</th>
-            <th>Total Biaya (Rp)</th>
-            <th>Hasil Bersih (Rp)</th>
-            <th>Aksi</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="filteredSchedules.length === 0">
-            <td colspan="10" class="text-center py-4">Belum ada data atau jadwal tidak ditemukan.</td>
-          </tr>
-          <tr v-for="s in filteredSchedules" :key="s.id">
-            <td>{{ s.user?.name }}</td>
-            <td>{{ s.crop?.name }}</td>
-            <td>{{ s.areaSizeInHa }} Ha</td>
-            <td>{{ new Date(s.plantDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}</td>
-            <td>{{ new Date(s.estHarvestDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}</td>
-            <td><strong>{{ s.estYieldInKg }} kg</strong></td>
-            <td class="text-emerald">
-              Rp {{ new Intl.NumberFormat('id-ID').format(s.estRevenueRupiah) }}
-            </td>
-            <td style="color: #ef4444;">
-              -Rp {{ new Intl.NumberFormat('id-ID').format(s.totalExpensesRupiah || 0) }}
-            </td>
-            <td style="color: #60a5fa; font-weight: 600;">
-              Rp {{ new Intl.NumberFormat('id-ID').format(s.estRevenueRupiah - (s.totalExpensesRupiah || 0)) }}
-            </td>
-            <td>
-              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-                <button v-if="currentUser && s.userId === currentUser.id" class="btn" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--warning-color); color: var(--warning-color); background: transparent;" @click="openExpenseModal(s)">💰 Catat Biaya</button>
-                <button v-if="s.status !== 'HARVESTED' && currentUser && s.userId === currentUser.id" class="btn" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent;" @click="openUpdateModal(s)">Update Panen</button>
-                
-                <button v-if="s.status !== 'HARVESTED' && currentUser && s.userId === currentUser.id" class="btn btn-secondary-outline" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--text-muted); color: var(--text-muted); background: transparent;" @click="openEditBaseModal(s)">Edit</button>
-                <button v-if="currentUser && s.userId === currentUser.id" class="btn btn-secondary-outline" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--danger-color); color: var(--danger-color); background: transparent;" @click="deleteSchedule(s.id)">Hapus</button>
-                
-                <span v-else-if="s.status !== 'HARVESTED' && (!currentUser || s.userId !== currentUser.id)" class="text-muted" style="font-size: 0.85rem;">⏳ Menunggu</span>
-                <span v-if="s.status === 'HARVESTED'" class="text-emerald" style="font-size: 0.85rem; font-weight: bold;">✅ Selesai</span>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Petani</th>
+              <th>Tanaman</th>
+              <th>Luas</th>
+              <th>Tgl Tanam</th>
+              <th>Tgl Panen (Est)</th>
+              <th>Tonase (Kg)</th>
+              <th>Pendapatan (Rp)</th>
+              <th>Total Biaya (Rp)</th>
+              <th>Hasil Bersih (Rp)</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="filteredSchedules.length === 0">
+              <td colspan="10" class="text-center py-4">Belum ada data atau jadwal tidak ditemukan.</td>
+            </tr>
+            <tr v-for="s in paginatedSchedules" :key="s.id">
+              <td>{{ s.user?.name }}</td>
+              <td>{{ s.crop?.name }}</td>
+              <td>{{ s.areaSizeInHa }} Ha</td>
+              <td>{{ new Date(s.plantDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) }}</td>
+              <td>{{ new Date(s.estHarvestDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) }}</td>
+              <td><strong>{{ s.estYieldInKg }} kg</strong></td>
+              <td class="text-emerald">Rp {{ new Intl.NumberFormat('id-ID').format(s.estRevenueRupiah) }}</td>
+              <td style="color:#ef4444;">-Rp {{ new Intl.NumberFormat('id-ID').format(s.totalExpensesRupiah || 0) }}</td>
+              <td style="color:#60a5fa;font-weight:600;">Rp {{ new Intl.NumberFormat('id-ID').format(s.estRevenueRupiah - (s.totalExpensesRupiah || 0)) }}</td>
+              <td>
+                <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
+                  <button v-if="currentUser && s.userId === currentUser.id" class="btn-action" style="background:transparent;border:1px solid var(--warning-color);color:var(--warning-color);" @click="openExpenseModal(s)">💰 Biaya</button>
+                  <button v-if="s.status !== 'HARVESTED' && currentUser && s.userId === currentUser.id" class="btn-action" style="background:transparent;border:1px solid var(--primary-color);color:var(--primary-color);" @click="openUpdateModal(s)">Panen</button>
+                  <button v-if="s.status !== 'HARVESTED' && currentUser && s.userId === currentUser.id" class="btn-action" style="background:transparent;border:1px solid var(--text-muted);color:var(--text-muted);" @click="openEditBaseModal(s)">Edit</button>
+                  <button v-if="currentUser && s.userId === currentUser.id" class="btn-action danger" style="background:transparent;" @click="deleteSchedule(s.id)">Hapus</button>
+                  <span v-else-if="s.status !== 'HARVESTED' && (!currentUser || s.userId !== currentUser.id)" class="text-muted" style="font-size:0.85rem;">⏳ Menunggu</span>
+                  <span v-if="s.status === 'HARVESTED'" class="text-emerald" style="font-size:0.85rem;font-weight:bold;">✅ Selesai</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="pagination" v-if="totalSchedPages > 1">
+        <span class="pagination-info">
+          Menampilkan {{ (schedCurrentPage - 1) * schedPerPage + 1 }}–{{ Math.min(schedCurrentPage * schedPerPage, filteredSchedules.length) }} dari {{ filteredSchedules.length }} jadwal
+        </span>
+        <div class="pagination-controls">
+          <button class="page-btn" :disabled="schedCurrentPage === 1" @click="goToSchedPage(schedCurrentPage - 1)">‹</button>
+          <button v-if="schedPageRange[0] > 1" class="page-btn" @click="goToSchedPage(1)">1</button>
+          <span v-if="schedPageRange[0] > 2" class="text-muted" style="padding:0 4px;">…</span>
+          <button v-for="p in schedPageRange" :key="p" class="page-btn" :class="{ active: p === schedCurrentPage }" @click="goToSchedPage(p)">{{ p }}</button>
+          <span v-if="schedPageRange[schedPageRange.length-1] < totalSchedPages - 1" class="text-muted" style="padding:0 4px;">…</span>
+          <button v-if="schedPageRange[schedPageRange.length-1] < totalSchedPages" class="page-btn" @click="goToSchedPage(totalSchedPages)">{{ totalSchedPages }}</button>
+          <button class="page-btn" :disabled="schedCurrentPage === totalSchedPages" @click="goToSchedPage(schedCurrentPage + 1)">›</button>
+        </div>
+      </div>
     </div>
 
     <!-- Modal Form: PENGELUARAN (EXPENSES) -->

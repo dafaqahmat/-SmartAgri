@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, onMounted, nextTick, computed } from 'vue';
 import api from '../api';
 import { toast } from 'vue3-toastify';
 import Swal from 'sweetalert2';
@@ -36,6 +36,23 @@ const unselectedIcon = new L.Icon({
 const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
 const bookings = ref([]);
+const bookingCurrentPage = ref(1);
+const bookingPerPage = 10;
+
+const sortedBookings = computed(() => [...bookings.value].sort((a, b) => b.id - a.id));
+const totalBookingPages = computed(() => Math.max(1, Math.ceil(sortedBookings.value.length / bookingPerPage)));
+const paginatedBookings = computed(() => {
+  const start = (bookingCurrentPage.value - 1) * bookingPerPage;
+  return sortedBookings.value.slice(start, start + bookingPerPage);
+});
+const bookingPageRange = computed(() => {
+  const total = totalBookingPages.value;
+  const cur = bookingCurrentPage.value;
+  let pages = [];
+  for (let i = Math.max(1, cur - 2); i <= Math.min(total, cur + 2); i++) pages.push(i);
+  return pages;
+});
+const goToBookingPage = (p) => { if (p >= 1 && p <= totalBookingPages.value) bookingCurrentPage.value = p; };
 const isModalOpen = ref(false);
 const editingBookingId = ref(null);
 
@@ -526,76 +543,77 @@ const onTimeChange = async () => {
 
     <!-- Table -->
     <div class="glass-panel overflow-hidden">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Petani</th>
-            <th>Blok Sawah</th>
-            <th>Tanggal</th>
-            <th>Jam</th>
-            <th>Status</th>
-            <th>Aksi</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="bookings.length === 0">
-            <td colspan="6" class="text-center py-4">Belum ada data booking.</td>
-          </tr>
-          <tr v-for="b in bookings" :key="b.id">
-            <td>{{ b.user?.name }}</td>
-            <td>{{ b.blockName }}</td>
-            <td>{{ new Date(b.bookingDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}</td>
-            <td>{{ b.startTime }} WIB - {{ b.endTime }} WIB</td>
-            <td>
-              <span :class="['badge', b.status.toLowerCase()]">{{ b.status }}</span>
-            </td>
-            <td>
-              <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                <button 
-                  v-if="userRole === 'ADMIN' && b.status === 'PENDING'" 
-                  @click="updateStatus(b.id, 'APPROVED')" 
-                  class="btn-action success">
-                  Setujui
-                </button>
-                <button 
-                  v-if="userRole === 'ADMIN' && b.status === 'PENDING'" 
-                  @click="updateStatus(b.id, 'REJECTED')" 
-                  class="btn-action danger" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444;">
-                  Tolak
-                </button>
-                
-                <button 
-                  v-if="b.status === 'APPROVED'" 
-                  @click="finishEarly(b.id)" 
-                  class="btn-action success">
-                  Selesai
-                </button>
-
-                <!-- EDIT / HAPUS -->
-                <template v-if="(userRole === 'ADMIN' && b.status !== 'FINISHED' && b.createdBy !== 'SELF') || (userRole === 'PETANI' && b.status !== 'APPROVED' && b.status !== 'FINISHED' && b.status !== 'REJECTED' && userId === b.userId)">
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Petani</th>
+              <th>Blok Sawah</th>
+              <th>Tanggal</th>
+              <th>Jam</th>
+              <th>Status</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="sortedBookings.length === 0">
+              <td colspan="6" class="text-center py-4">Belum ada data booking.</td>
+            </tr>
+            <tr v-for="b in paginatedBookings" :key="b.id">
+              <td>{{ b.user?.name }}</td>
+              <td>{{ b.blockName }}</td>
+              <td>{{ new Date(b.bookingDate).toLocaleDateString('id-ID', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) }}</td>
+              <td>{{ b.startTime }} – {{ b.endTime }} WIB</td>
+              <td>
+                <span :class="['badge', b.status.toLowerCase()]">{{ b.status }}</span>
+              </td>
+              <td>
+                <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
                   <button 
-                    @click="openEditBookingModal(b)" 
-                    class="btn-action" style="background: transparent; color: var(--text-muted); border: 1px solid var(--text-muted);">
-                    Edit
-                  </button>
+                    v-if="userRole === 'ADMIN' && b.status === 'PENDING'" 
+                    @click="updateStatus(b.id, 'APPROVED')" 
+                    class="btn-action success">Setujui</button>
                   <button 
-                    @click="deleteBooking(b.id)" 
-                    class="btn-action danger" style="background: transparent; color: #ef4444; border: 1px solid #ef4444;">
-                    Hapus
+                    v-if="userRole === 'ADMIN' && b.status === 'PENDING'" 
+                    @click="updateStatus(b.id, 'REJECTED')" 
+                    class="btn-action danger">Tolak</button>
+                  <button 
+                    v-if="b.status === 'APPROVED'" 
+                    @click="finishEarly(b.id)" 
+                    class="btn-action success">Selesai</button>
+                  <!-- EDIT / HAPUS -->
+                  <template v-if="(userRole === 'ADMIN' && b.status !== 'FINISHED' && b.createdBy !== 'SELF') || (userRole === 'PETANI' && b.status !== 'APPROVED' && b.status !== 'FINISHED' && b.status !== 'REJECTED' && userId === b.userId)">
+                    <button @click="openEditBookingModal(b)" class="btn-action" style="background:transparent;color:var(--text-muted);border:1px solid var(--text-muted);">Edit</button>
+                    <button @click="deleteBooking(b.id)" class="btn-action danger" style="background:transparent;">Hapus</button>
+                  </template>
+                  <button 
+                    v-if="b.status === 'REJECTED' && b.reason" 
+                    @click="showRejectReason(b.reason)" 
+                    class="btn-action" style="background:transparent;color:#fca5a5;border:1px solid #fca5a5;">
+                    ℹ️ Info Tolak
                   </button>
-                </template>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-                <button 
-                  v-if="b.status === 'REJECTED' && b.reason" 
-                  @click="showRejectReason(b.reason)" 
-                  class="btn-action" style="background: transparent; color: #fca5a5; border: 1px solid #fca5a5;">
-                  ℹ️ Info Tolak
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <!-- Pagination -->
+      <div class="pagination" v-if="totalBookingPages > 1">
+        <span class="pagination-info">
+          Menampilkan {{ (bookingCurrentPage - 1) * bookingPerPage + 1 }}–{{ Math.min(bookingCurrentPage * bookingPerPage, sortedBookings.length) }} dari {{ sortedBookings.length }} data
+        </span>
+        <div class="pagination-controls">
+          <button class="page-btn" :disabled="bookingCurrentPage === 1" @click="goToBookingPage(bookingCurrentPage - 1)">‹</button>
+          <button v-if="bookingPageRange[0] > 1" class="page-btn" @click="goToBookingPage(1)">1</button>
+          <span v-if="bookingPageRange[0] > 2" class="text-muted" style="padding:0 4px;">…</span>
+          <button v-for="p in bookingPageRange" :key="p" class="page-btn" :class="{ active: p === bookingCurrentPage }" @click="goToBookingPage(p)">{{ p }}</button>
+          <span v-if="bookingPageRange[bookingPageRange.length-1] < totalBookingPages - 1" class="text-muted" style="padding:0 4px;">…</span>
+          <button v-if="bookingPageRange[bookingPageRange.length-1] < totalBookingPages" class="page-btn" @click="goToBookingPage(totalBookingPages)">{{ totalBookingPages }}</button>
+          <button class="page-btn" :disabled="bookingCurrentPage === totalBookingPages" @click="goToBookingPage(bookingCurrentPage + 1)">›</button>
+        </div>
+      </div>
     </div>
 
     <!-- Modal Booking -->
