@@ -37,6 +37,8 @@ const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
 const bookings = ref([]);
 const isModalOpen = ref(false);
+const editingBookingId = ref(null);
+
 const form = ref({
   blockName: '',
   bookingDate: '',
@@ -85,14 +87,7 @@ const fetchBookings = async () => {
   }
 };
 
-const openBookingModal = async () => {
-  isModalOpen.value = true;
-  startH.value = '08';
-  startM.value = '00';
-  endH.value = '12';
-  endM.value = '00';
-  form.value = { blockName: '', bookingDate: '', startTime: '08:00', endTime: '12:00', durationHours: 4, targetUserId: null };
-
+const preloadBookingData = async () => {
   // Ambil jadwal irigasi yang aktif
   try {
     const res = await api.get('/irrigation-settings');
@@ -138,6 +133,47 @@ const openBookingModal = async () => {
       initMap();
     }, 300);
   });
+};
+
+const openBookingModal = async () => {
+  editingBookingId.value = null;
+  isModalOpen.value = true;
+  startH.value = '08';
+  startM.value = '00';
+  endH.value = '12';
+  endM.value = '00';
+  form.value = { blockName: '', bookingDate: '', startTime: '08:00', endTime: '12:00', durationHours: 4, targetUserId: null };
+
+  await preloadBookingData();
+};
+
+const openEditBookingModal = async (b) => {
+  editingBookingId.value = b.id;
+  isModalOpen.value = true;
+  form.value = { 
+    blockName: b.blockName, 
+    bookingDate: new Date(b.bookingDate).toISOString().split('T')[0], 
+    startTime: b.startTime, 
+    endTime: b.endTime, 
+    durationHours: b.durationHours, 
+    targetUserId: b.userId 
+  };
+  
+  const [sh, sm] = b.startTime.split(':');
+  startH.value = sh; startM.value = sm;
+  const [eh, em] = b.endTime.split(':');
+  endH.value = eh; endM.value = em;
+
+  await preloadBookingData();
+};
+
+const closeBookingModal = () => {
+  isModalOpen.value = false;
+  editingBookingId.value = null;
+  if (map) {
+    map.remove();
+    map = null;
+  }
 };
 
 const initMap = () => {
@@ -280,9 +316,15 @@ const submitBooking = async () => {
     
     form.value.durationHours = Math.ceil(diffMins / 60);
 
-    await api.post('/water-bookings', form.value);
+    if (editingBookingId.value) {
+      await api.put(`/water-bookings/${editingBookingId.value}`, form.value);
+      toast.success('Booking berhasil diupdate!');
+    } else {
+      await api.post('/water-bookings', form.value);
+      toast.success('Booking berhasil diajukan!');
+    }
     
-    isModalOpen.value = false;
+    closeBookingModal();
     if (map) { map.remove(); map = null; }
     
     fetchBookings();
@@ -322,6 +364,29 @@ const finishEarly = async (id) => {
       toast.info('Pengairan selesai lebih awal.');
     } catch(err) {
       toast.error('Gagal menyelesaikan pengairan');
+    }
+  }
+};
+
+const deleteBooking = async (id) => {
+  const result = await Swal.fire({
+    title: 'Hapus Booking?',
+    text: "Data booking ini akan dihapus permanen.",
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#64748b',
+    confirmButtonText: 'Ya, Hapus',
+    background: '#0f172a',
+    color: '#fff'
+  });
+  if (result.isConfirmed) {
+    try {
+      await api.delete(`/water-bookings/${id}`);
+      fetchBookings();
+      Swal.fire({ title: 'Terhapus', icon: 'success', background: '#0f172a', color: '#fff' });
+    } catch(err) { 
+      toast.error(err.response?.data?.message || 'Gagal menghapus booking'); 
     }
   }
 };
@@ -378,12 +443,16 @@ const updateStatus = async (id, status) => {
   }
 };
 
-const closeBookingModal = () => {
-  isModalOpen.value = false;
-  if (map) {
-    map.remove();
-    map = null;
-  }
+const showRejectReason = (reason) => {
+  Swal.fire({
+    title: 'Alasan Penolakan',
+    text: reason,
+    icon: 'info',
+    confirmButtonText: 'Tutup',
+    confirmButtonColor: '#3b82f6',
+    background: '#0f172a',
+    color: '#fff'
+  });
 };
 
 // Validasi hari saat tanggal dipilih
@@ -481,7 +550,7 @@ const onTimeChange = async () => {
               <span :class="['badge', b.status.toLowerCase()]">{{ b.status }}</span>
             </td>
             <td>
-              <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
                 <button 
                   v-if="userRole === 'ADMIN' && b.status === 'PENDING'" 
                   @click="updateStatus(b.id, 'APPROVED')" 
@@ -500,6 +569,27 @@ const onTimeChange = async () => {
                   @click="finishEarly(b.id)" 
                   class="btn-action success">
                   Selesai
+                </button>
+
+                <!-- EDIT / HAPUS -->
+                <template v-if="(userRole === 'ADMIN' && b.status !== 'FINISHED') || (userRole === 'PETANI' && b.status !== 'APPROVED' && b.status !== 'FINISHED' && b.status !== 'REJECTED' && userId === b.userId)">
+                  <button 
+                    @click="openEditBookingModal(b)" 
+                    class="btn-action" style="background: transparent; color: var(--text-muted); border: 1px solid var(--text-muted);">
+                    Edit
+                  </button>
+                  <button 
+                    @click="deleteBooking(b.id)" 
+                    class="btn-action danger" style="background: transparent; color: #ef4444; border: 1px solid #ef4444;">
+                    Hapus
+                  </button>
+                </template>
+
+                <button 
+                  v-if="b.status === 'REJECTED' && b.reason" 
+                  @click="showRejectReason(b.reason)" 
+                  class="btn-action" style="background: transparent; color: #fca5a5; border: 1px solid #fca5a5;">
+                  ℹ️ Info Tolak
                 </button>
               </div>
             </td>

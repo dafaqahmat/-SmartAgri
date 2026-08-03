@@ -32,13 +32,13 @@ const goToEditUser = (id) => {
 
 const deleteUser = async (id) => {
   const result = await Swal.fire({
-    title: 'Hapus Petani?',
-    text: "Semua data sawah dan jadwal miliknya akan ikut terhapus permanen!",
+    title: 'Nonaktifkan Petani?',
+    text: "Petani akan dinonaktifkan (soft delete) dan tidak bisa login.",
     icon: 'warning',
     showCancelButton: true,
     confirmButtonColor: '#ef4444',
     cancelButtonColor: '#64748b',
-    confirmButtonText: 'Ya, Hapus!',
+    confirmButtonText: 'Ya, Nonaktifkan!',
     cancelButtonText: 'Batal',
     background: '#0f172a',
     color: '#fff'
@@ -48,16 +48,27 @@ const deleteUser = async (id) => {
     try {
       await api.delete(`/users/${id}`);
       Swal.fire({
-        title: 'Terhapus!',
-        text: 'Data petani berhasil dihapus.',
+        title: 'Nonaktif!',
+        text: 'Data petani berhasil dinonaktifkan.',
         icon: 'success',
         background: '#0f172a',
         color: '#fff'
       });
       fetchUsers();
     } catch (err) {
-      toast.error('Gagal menghapus petani');
+      toast.error('Gagal menonaktifkan petani');
     }
+  }
+};
+
+const restoreUser = async (id) => {
+  try {
+    // Kita gunakan endpoint update user untuk memulihkan
+    await api.put(`/users/${id}`, { isActive: true, deletedAt: null });
+    toast.success('Petani berhasil diaktifkan kembali!');
+    fetchUsers();
+  } catch (err) {
+    toast.error('Gagal mengaktifkan petani');
   }
 };
 </script>
@@ -82,8 +93,8 @@ const deleteUser = async (id) => {
           <tr>
             <th>ID</th>
             <th>Nama Petani</th>
-            <th>Email</th>
-            <th>No. Telepon</th>
+            <th>Email & Telp</th>
+            <th>Status</th>
             <th>Jumlah Sawah</th>
             <th>Aksi</th>
           </tr>
@@ -95,15 +106,25 @@ const deleteUser = async (id) => {
           <tr v-for="user in users.filter(u => u.name.toLowerCase().includes(searchQuery.toLowerCase()))" :key="user.id">
             <td>#{{ user.id }}</td>
             <td><strong>{{ user.name }}</strong></td>
-            <td>{{ user.email }}</td>
-            <td>{{ user.phone || '-' }}</td>
+            <td>
+              <div>{{ user.email }}</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted);">{{ user.phone || '-' }}</div>
+            </td>
+            <td>
+              <span v-if="!user.deletedAt" style="background: rgba(52, 211, 153, 0.2); color: #34d399; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">Aktif</span>
+              <span v-else style="background: rgba(239, 68, 68, 0.2); color: #ef4444; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">Nonaktif</span>
+            </td>
             <td>
               <span v-if="user.fields && user.fields.length > 0" class="text-emerald">{{ user.fields.length }} Petak Sawah</span>
               <span v-else class="text-muted">Belum ada sawah</span>
             </td>
             <td>
-              <button class="btn btn-secondary-outline" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent; margin-right: 5px;" @click="goToEditUser(user.id)">Detail & Peta</button>
-              <button class="btn btn-secondary-outline" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border: 1px solid var(--danger-color); color: var(--danger-color); background: transparent;" @click="deleteUser(user.id)">Hapus</button>
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button class="btn btn-secondary-outline" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--primary-color); color: var(--primary-color); background: transparent;" @click="goToEditUser(user.id)">Edit Data</button>
+                
+                <button v-if="!user.deletedAt" class="btn btn-secondary-outline" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--danger-color); color: var(--danger-color); background: transparent;" @click="deleteUser(user.id)">Nonaktifkan (Hapus)</button>
+                <button v-else class="btn btn-secondary-outline" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--warning-color); color: var(--warning-color); background: transparent;" @click="restoreUser(user.id)">Aktifkan Kembali</button>
+              </div>
             </td>
           </tr>
         </tbody>
