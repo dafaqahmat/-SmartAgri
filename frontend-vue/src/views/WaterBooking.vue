@@ -1,10 +1,11 @@
 <script setup>
-import { ref, onMounted, nextTick, computed } from 'vue';
+import { ref, onMounted, nextTick, computed, watch } from 'vue';
 import api from '../api';
 import { toast } from 'vue3-toastify';
 import Swal from 'sweetalert2';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import TablePagination from '../components/TablePagination.vue';
 
 // Fix Leaflet icons issues in Vue
 delete L.Icon.Default.prototype._getIconUrl;
@@ -37,22 +38,15 @@ const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
 const bookings = ref([]);
 const bookingCurrentPage = ref(1);
-const bookingPerPage = 10;
+const bookingPerPage = ref(10);
 
 const sortedBookings = computed(() => [...bookings.value].sort((a, b) => b.id - a.id));
-const totalBookingPages = computed(() => Math.max(1, Math.ceil(sortedBookings.value.length / bookingPerPage)));
+const totalBookingPages = computed(() => Math.max(1, Math.ceil(sortedBookings.value.length / bookingPerPage.value)));
 const paginatedBookings = computed(() => {
-  const start = (bookingCurrentPage.value - 1) * bookingPerPage;
-  return sortedBookings.value.slice(start, start + bookingPerPage);
+  const start = (bookingCurrentPage.value - 1) * bookingPerPage.value;
+  return sortedBookings.value.slice(start, start + bookingPerPage.value);
 });
-const bookingPageRange = computed(() => {
-  const total = totalBookingPages.value;
-  const cur = bookingCurrentPage.value;
-  let pages = [];
-  for (let i = Math.max(1, cur - 2); i <= Math.min(total, cur + 2); i++) pages.push(i);
-  return pages;
-});
-const goToBookingPage = (p) => { if (p >= 1 && p <= totalBookingPages.value) bookingCurrentPage.value = p; };
+watch(totalBookingPages, (t) => { if (bookingCurrentPage.value > t) bookingCurrentPage.value = t; });
 const isModalOpen = ref(false);
 const editingBookingId = ref(null);
 
@@ -600,20 +594,12 @@ const onTimeChange = async () => {
       </div>
 
       <!-- Pagination -->
-      <div class="pagination" v-if="totalBookingPages > 1">
-        <span class="pagination-info">
-          Menampilkan {{ (bookingCurrentPage - 1) * bookingPerPage + 1 }}–{{ Math.min(bookingCurrentPage * bookingPerPage, sortedBookings.length) }} dari {{ sortedBookings.length }} data
-        </span>
-        <div class="pagination-controls">
-          <button class="page-btn" :disabled="bookingCurrentPage === 1" @click="goToBookingPage(bookingCurrentPage - 1)">‹</button>
-          <button v-if="bookingPageRange[0] > 1" class="page-btn" @click="goToBookingPage(1)">1</button>
-          <span v-if="bookingPageRange[0] > 2" class="text-muted" style="padding:0 4px;">…</span>
-          <button v-for="p in bookingPageRange" :key="p" class="page-btn" :class="{ active: p === bookingCurrentPage }" @click="goToBookingPage(p)">{{ p }}</button>
-          <span v-if="bookingPageRange[bookingPageRange.length-1] < totalBookingPages - 1" class="text-muted" style="padding:0 4px;">…</span>
-          <button v-if="bookingPageRange[bookingPageRange.length-1] < totalBookingPages" class="page-btn" @click="goToBookingPage(totalBookingPages)">{{ totalBookingPages }}</button>
-          <button class="page-btn" :disabled="bookingCurrentPage === totalBookingPages" @click="goToBookingPage(bookingCurrentPage + 1)">›</button>
-        </div>
-      </div>
+      <TablePagination
+        v-if="sortedBookings.length > 0"
+        v-model:current-page="bookingCurrentPage"
+        v-model:per-page="bookingPerPage"
+        :total-items="sortedBookings.length"
+      />
     </div>
 
     <!-- Modal Booking -->

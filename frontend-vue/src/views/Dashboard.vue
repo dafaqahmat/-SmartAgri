@@ -1,6 +1,7 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import api from '../api';
+import TablePagination from '../components/TablePagination.vue';
 
 const dashboardData = ref({
   panen: { title: 'Memuat...', value: '-', desc: '' },
@@ -9,6 +10,15 @@ const dashboardData = ref({
   recentBookings: []
 });
 const isLoading = ref(true);
+
+// Pagination
+const currentPage = ref(1);
+const perPage = ref(10);
+
+const paginatedBookings = computed(() => {
+  const start = (currentPage.value - 1) * perPage.value;
+  return dashboardData.value.recentBookings.slice(start, start + perPage.value);
+});
 
 const fetchDashboard = async () => {
   try {
@@ -81,7 +91,7 @@ onMounted(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="b in dashboardData.recentBookings" :key="b.id">
+            <tr v-for="b in paginatedBookings" :key="b.id">
               <td>{{ b.user?.name || '-' }}</td>
               <td>{{ b.blockName }}</td>
               <td>{{ new Date(b.bookingDate).toLocaleDateString('id-ID', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }) }}</td>
@@ -92,6 +102,12 @@ onMounted(() => {
             </tr>
           </tbody>
         </table>
+        <!-- Pagination -->
+        <TablePagination
+          v-model:current-page="currentPage"
+          v-model:per-page="perPage"
+          :total-items="dashboardData.recentBookings.length"
+        />
       </div>
     </div>
   </div>

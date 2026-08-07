@@ -1,9 +1,10 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api';
 import { toast } from 'vue3-toastify';
 import Swal from 'sweetalert2';
+import TablePagination from '../components/TablePagination.vue';
 
 const router = useRouter();
 const users = ref([]);
@@ -11,7 +12,7 @@ const searchQuery = ref('');
 
 // Pagination
 const currentPage = ref(1);
-const perPage = 10;
+const perPage = ref(10);
 
 onMounted(() => { fetchUsers(); });
 
@@ -34,22 +35,14 @@ const filteredUsers = computed(() => {
   return list;
 });
 
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredUsers.value.length / perPage)));
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredUsers.value.length / perPage.value)));
 
 const paginatedUsers = computed(() => {
-  const start = (currentPage.value - 1) * perPage;
-  return filteredUsers.value.slice(start, start + perPage);
+  const start = (currentPage.value - 1) * perPage.value;
+  return filteredUsers.value.slice(start, start + perPage.value);
 });
 
-const pageRange = computed(() => {
-  const total = totalPages.value;
-  const cur = currentPage.value;
-  let pages = [];
-  for (let i = Math.max(1, cur - 2); i <= Math.min(total, cur + 2); i++) pages.push(i);
-  return pages;
-});
-
-const goToPage = (p) => { if (p >= 1 && p <= totalPages.value) currentPage.value = p; };
+watch(totalPages, (t) => { if (currentPage.value > t) currentPage.value = t; });
 
 const goToCreateUser = () => router.push('/admin/users/create');
 const goToEditUser = (id) => router.push(`/admin/users/${id}/edit`);
@@ -144,20 +137,12 @@ const restoreUser = async (id) => {
       </div>
 
       <!-- Pagination -->
-      <div class="pagination" v-if="totalPages > 1">
-        <span class="pagination-info">
-          Menampilkan {{ (currentPage - 1) * perPage + 1 }}–{{ Math.min(currentPage * perPage, filteredUsers.length) }} dari {{ filteredUsers.length }} data
-        </span>
-        <div class="pagination-controls">
-          <button class="page-btn" :disabled="currentPage === 1" @click="goToPage(currentPage - 1)">‹</button>
-          <button v-if="pageRange[0] > 1" class="page-btn" @click="goToPage(1)">1</button>
-          <span v-if="pageRange[0] > 2" class="text-muted" style="padding:0 4px;">…</span>
-          <button v-for="p in pageRange" :key="p" class="page-btn" :class="{ active: p === currentPage }" @click="goToPage(p)">{{ p }}</button>
-          <span v-if="pageRange[pageRange.length-1] < totalPages - 1" class="text-muted" style="padding:0 4px;">…</span>
-          <button v-if="pageRange[pageRange.length-1] < totalPages" class="page-btn" @click="goToPage(totalPages)">{{ totalPages }}</button>
-          <button class="page-btn" :disabled="currentPage === totalPages" @click="goToPage(currentPage + 1)">›</button>
-        </div>
-      </div>
+      <TablePagination
+        v-if="filteredUsers.length > 0"
+        v-model:current-page="currentPage"
+        v-model:per-page="perPage"
+        :total-items="filteredUsers.length"
+      />
     </div>
   </div>
 </template>

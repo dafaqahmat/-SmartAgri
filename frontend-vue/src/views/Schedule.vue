@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import api from '../api';
 import { toast } from 'vue3-toastify';
+import TablePagination from '../components/TablePagination.vue';
 
 const schedules = ref([]);
 const crops = ref([]);
@@ -10,7 +11,7 @@ const currentUser = ref(null);
 
 const tableSearchQuery = ref('');
 const schedCurrentPage = ref(1);
-const schedPerPage = 10;
+const schedPerPage = ref(10);
 
 const filteredSchedules = computed(() => {
   let list = [...schedules.value].sort((a, b) => b.id - a.id);
@@ -30,22 +31,14 @@ const filteredSchedules = computed(() => {
   return list;
 });
 
-const totalSchedPages = computed(() => Math.max(1, Math.ceil(filteredSchedules.value.length / schedPerPage)));
+const totalSchedPages = computed(() => Math.max(1, Math.ceil(filteredSchedules.value.length / schedPerPage.value)));
 
 const paginatedSchedules = computed(() => {
-  const start = (schedCurrentPage.value - 1) * schedPerPage;
-  return filteredSchedules.value.slice(start, start + schedPerPage);
+  const start = (schedCurrentPage.value - 1) * schedPerPage.value;
+  return filteredSchedules.value.slice(start, start + schedPerPage.value);
 });
 
-const schedPageRange = computed(() => {
-  const total = totalSchedPages.value;
-  const cur = schedCurrentPage.value;
-  let pages = [];
-  for (let i = Math.max(1, cur - 2); i <= Math.min(total, cur + 2); i++) pages.push(i);
-  return pages;
-});
-
-const goToSchedPage = (p) => { if (p >= 1 && p <= totalSchedPages.value) schedCurrentPage.value = p; };
+watch(totalSchedPages, (t) => { if (schedCurrentPage.value > t) schedCurrentPage.value = t; });
 const form = ref({
   cropId: '',
   areaSizeInHa: '',
@@ -269,7 +262,7 @@ const submitSchedule = async () => {
         <p class="text-muted">Kelola jadwal tanam dan pantau estimasi pendapatan secara real-time.</p>
       </div>
       <div class="action-buttons" style="display: flex; gap: 1rem; align-items: center;">
-        <input type="text" v-model="tableSearchQuery" class="form-input" style="width: 250px; margin-bottom: 0;" placeholder="🔍 Cari..." />
+        <input type="text" v-model="tableSearchQuery" class="form-input" style="width: 250px; margin-bottom: 0;" placeholder="🔍 Cari..." @input="schedCurrentPage = 1" />
         <button class="btn btn-primary" @click="isModalOpen = true">+ Tambah Jadwal</button>
       </div>
     </div>
@@ -322,20 +315,12 @@ const submitSchedule = async () => {
       </div>
 
       <!-- Pagination -->
-      <div class="pagination" v-if="totalSchedPages > 1">
-        <span class="pagination-info">
-          Menampilkan {{ (schedCurrentPage - 1) * schedPerPage + 1 }}–{{ Math.min(schedCurrentPage * schedPerPage, filteredSchedules.length) }} dari {{ filteredSchedules.length }} jadwal
-        </span>
-        <div class="pagination-controls">
-          <button class="page-btn" :disabled="schedCurrentPage === 1" @click="goToSchedPage(schedCurrentPage - 1)">‹</button>
-          <button v-if="schedPageRange[0] > 1" class="page-btn" @click="goToSchedPage(1)">1</button>
-          <span v-if="schedPageRange[0] > 2" class="text-muted" style="padding:0 4px;">…</span>
-          <button v-for="p in schedPageRange" :key="p" class="page-btn" :class="{ active: p === schedCurrentPage }" @click="goToSchedPage(p)">{{ p }}</button>
-          <span v-if="schedPageRange[schedPageRange.length-1] < totalSchedPages - 1" class="text-muted" style="padding:0 4px;">…</span>
-          <button v-if="schedPageRange[schedPageRange.length-1] < totalSchedPages" class="page-btn" @click="goToSchedPage(totalSchedPages)">{{ totalSchedPages }}</button>
-          <button class="page-btn" :disabled="schedCurrentPage === totalSchedPages" @click="goToSchedPage(schedCurrentPage + 1)">›</button>
-        </div>
-      </div>
+      <TablePagination
+        v-if="filteredSchedules.length > 0"
+        v-model:current-page="schedCurrentPage"
+        v-model:per-page="schedPerPage"
+        :total-items="filteredSchedules.length"
+      />
     </div>
 
     <!-- Modal Form: PENGELUARAN (EXPENSES) -->

@@ -1,11 +1,21 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import api from '../api';
 import { toast } from 'vue3-toastify';
+import TablePagination from '../components/TablePagination.vue';
 
 const reports = ref([]);
 const reportType = ref('');
 const isLoading = ref(true);
+
+// Pagination
+const currentPage = ref(1);
+const perPage = ref(10);
+
+const paginatedReports = computed(() => {
+  const start = (currentPage.value - 1) * perPage.value;
+  return reports.value.slice(start, start + perPage.value);
+});
 
 const fetchReports = async () => {
   try {
@@ -101,7 +111,7 @@ onMounted(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in reports" :key="r.id">
+            <tr v-for="r in paginatedReports" :key="r.id">
               <td>
                 <div style="font-weight: 500;">{{ r.name }}</div>
                 <div style="font-size: 0.8rem; color: var(--text-muted);">{{ r.email }}</div>
@@ -123,7 +133,7 @@ onMounted(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(r, index) in reports" :key="index">
+            <tr v-for="(r, index) in paginatedReports" :key="index">
               <td>
                 <div style="font-weight: 600; color: var(--primary-color);">{{ r.cropName }}</div>
               </td>
@@ -133,6 +143,14 @@ onMounted(() => {
           </tbody>
         </table>
       </div>
+
+      <!-- Pagination -->
+      <TablePagination
+        v-if="reports.length > 0"
+        v-model:current-page="currentPage"
+        v-model:per-page="perPage"
+        :total-items="reports.length"
+      />
     </div>
     
     <div v-else class="loading-state">
